@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─── NextAuth Required Models ────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Application Models ───────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  // Auth
+  passwordHash        String?
+
+  // Freelancer / business details
+  businessName        String?
+  businessEmail       String?
+  businessAddress     String?
+  businessPhone       String?
+  hstNumber           String?
+  logoUrl             String?
+
+  // Invoice defaults
+  invoicePrefix       String  @default("INV")
+  defaultPaymentTerms String  @default("Net 30")
+  defaultTaxRate      Decimal @default(0)
+  defaultCurrency     String  @default("USD")
+  paymentInstructions String?
+
+  // Email defaults
+  defaultEmailSubject String  @default("Invoice {{invoiceNumber}} – {{period}}")
+  defaultEmailBody    String  @default("Hi {{clientName}},\n\nPlease find attached invoice {{invoiceNumber}} for the period {{period}}.\n\nAmount due: {{total}}\nDue date: {{dueDate}}\n\n{{paymentInstructions}}\n\nThank you for your business!\n{{senderName}}")
+
+  accounts Account[]
+  sessions Session[]
+  clients  Client[]
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum BillingCycle {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+model Client {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name            String
+  companyName     String?
+  email           String
+  billingAddress  String?
+
+  hourlyRate   Decimal?
+  fixedRate    Decimal?
+  billingCycle BillingCycle @default(MONTHLY)
+  paymentTerms String       @default("Net 30")
+  currency     String       @default("USD")
+
+  defaultNotes        String?
+  emailTemplate       String?
+  paymentInstructions String?
+
+  isArchived Boolean @default(false)
+
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+}
+
+enum BillingType {
+  HOURLY
+  FIXED
+}
+
+model Invoice {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  invoiceNumber String        @unique
+  status        InvoiceStatus @default(DRAFT)
+  billingType   BillingType   @default(HOURLY)
+
+  billingPeriodStart DateTime?
+  billingPeriodEnd   DateTime?
+
+  hoursWorked Decimal?
+  hourlyRate  Decimal?
+  fixedAmount Decimal?
+
+  subtotal  Decimal
+  taxRate   Decimal @default(0)
+  taxAmount Decimal
+  total     Decimal
+  currency  String  @default("USD")
+
+  dueDate DateTime?
+  sentAt  DateTime?
+  paidAt  DateTime?
+
+  paymentMethod String?
+
+  taskSummary         String?
+  notes               String?
+  paymentInstructions String?
+  privateNotes        String?
+
+  emailSubject String?
+  emailBody    String?
+
+  emailLogs EmailLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmailLog {
+  id        String  @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  sentAt         DateTime @default(now())
+  recipientEmail String
+  subject        String
+  status         String   @default("SENT")
+  errorMessage   String?
+}
