@@ -19,12 +19,15 @@ export default async function InvoiceDetailPage({ params }: Params) {
 
   const { id } = await params;
 
+  const { invoices: invoicesTable, clients: clientsTable, users } = await import("@/lib/schema");
+  const { and, eq, desc } = await import("drizzle-orm");
+
   const [invoice, user] = await Promise.all([
-    db.invoice.findFirst({
-      where: { id, userId: session.user.id },
-      include: {
+    db.query.invoices.findFirst({
+      where: and(eq(invoicesTable.id, id), eq(invoicesTable.userId, session.user.id)),
+      with: {
         client: {
-          select: {
+          columns: {
             id: true,
             name: true,
             companyName: true,
@@ -33,12 +36,12 @@ export default async function InvoiceDetailPage({ params }: Params) {
             currency: true,
           },
         },
-        emailLogs: { orderBy: { sentAt: "desc" } },
+        emailLogs: { orderBy: desc(invoicesTable.createdAt) },
       },
     }),
-    db.user.findUnique({
-      where: { id: session.user.id },
-      select: {
+    db.query.users.findFirst({
+      where: eq(users.id, session.user.id),
+      columns: {
         name: true,
         businessName: true,
         businessEmail: true,
@@ -53,20 +56,11 @@ export default async function InvoiceDetailPage({ params }: Params) {
 
   if (!invoice) notFound();
 
-  const inv = {
-    ...invoice,
-    total: Number(invoice.total),
-    subtotal: Number(invoice.subtotal),
-    taxAmount: Number(invoice.taxAmount),
-    taxRate: Number(invoice.taxRate),
-    hoursWorked: invoice.hoursWorked ? Number(invoice.hoursWorked) : null,
-    hourlyRate: invoice.hourlyRate ? Number(invoice.hourlyRate) : null,
-    fixedAmount: invoice.fixedAmount ? Number(invoice.fixedAmount) : null,
-  };
+  const inv = invoice;
 
-  const clientEmailTemplate = await db.client.findFirst({
-    where: { id: inv.clientId },
-    select: { emailTemplate: true },
+  const clientEmailTemplate = await db.query.clients.findFirst({
+    where: eq(clientsTable.id, inv.clientId),
+    columns: { emailTemplate: true },
   });
 
   const emailSubject = inv.emailSubject ?? user?.defaultEmailSubject ?? "Invoice {{invoiceNumber}}";

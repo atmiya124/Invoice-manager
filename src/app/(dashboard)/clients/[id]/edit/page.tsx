@@ -12,17 +12,14 @@ export default async function EditClientPage({ params }: Params) {
 
   const { id } = await params;
 
-  const client = await db.client.findFirst({
-    where: { id, userId: session.user.id },
+  const { clients: clientsTable } = await import("@/lib/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const client = await db.query.clients.findFirst({
+    where: and(eq(clientsTable.id, id), eq(clientsTable.userId, session.user.id)),
   });
 
   if (!client) notFound();
-
-  const serializedClient = {
-    ...client,
-    hourlyRate: client.hourlyRate?.toNumber() ?? null,
-    fixedRate: client.fixedRate?.toNumber() ?? null,
-  };
 
   return (
     <div className="max-w-2xl">
@@ -30,7 +27,7 @@ export default async function EditClientPage({ params }: Params) {
         Update client details. Existing invoices will not be affected.
       </p>
       <ClientForm
-        defaultValues={serializedClient}
+        defaultValues={client}
         clientId={client.id}
       />
     </div>

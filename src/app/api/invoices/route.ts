@@ -1,24 +1,12 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invoices, clients, users } from "@/lib/schema";
 import { invoiceSchema } from "@/lib/validations";
 import { calculateInvoiceTotals, generateInvoiceNumber } from "@/lib/utils";
 import { NextRequest } from "next/server";
-import { InvoiceStatus, Prisma } from "@/generated/prisma/client";
+import { and, eq, desc, inArray, count, like } from "drizzle-orm";
 import { isAfter } from "date-fns";
-
-function serializeInvoice(invoice: Record<string, unknown>) {
-  return {
-    ...invoice,
-    total: Number(invoice.total),
-    subtotal: Number(invoice.subtotal),
-    taxAmount: Number(invoice.taxAmount),
-    taxRate: Number(invoice.taxRate),
-    hoursWorked: invoice.hoursWorked ? Number(invoice.hoursWorked) : null,
-    hourlyRate: invoice.hourlyRate ? Number(invoice.hourlyRate) : null,
-    fixedAmount: invoice.fixedAmount ? Number(invoice.fixedAmount) : null,
-  };
-}
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -27,28 +15,19 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const status = searchParams.get("status") as InvoiceStatus | null;
+  const status = searchParams.get("status") as "DRAFT" | "SENT" | "PAID" | "OVERDUE" | null;
   const clientId = searchParams.get("clientId");
   const search = searchParams.get("search");
 
-  const where: Prisma.InvoiceWhereInput = {
-    userId: session.user.id,
-    ...(status && { status }),
-    ...(clientId && { clientId }),
-    ...(search && {
-      OR: [
-        { invoiceNumber: { contains: search } },
-        { client: { name: { contains: search } } },
-        { client: { companyName: { contains: search } } },
-      ],
-    }),
-  };
-
-  const invoices = await db.invoice.findMany({
-    where,
-    include: {
+  const results = await db.query.invoices.findMany({
+    where: and(
+      eq(invoices.userId, session.user.id),
+      status ? eq(invoices.status, status) : undefined,
+      clientId ? eq(invoices.clientId, clientId) : undefined
+    ),
+    with: {
       client: {
-        select: {
+        columns: {
           id: true,
           name: true,
           companyName: true,
@@ -58,12 +37,21 @@ export async function GET(req: NextRequest) {
         },
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: desc(invoices.createdAt),
   });
+
+  const filtered = search
+    ? results.filter(
+        (inv) =>
+          inv.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
+          inv.client.name.toLowerCase().includes(search.toLowerCase()) ||
+          (inv.client.companyName?.toLowerCase().includes(search.toLowerCase()) ?? false)
+      )
+    : results;
 
   // Auto-mark overdue
   const now = new Date();
-  const toMarkOverdue = invoices
+  const toMarkOverdue = filtered
     .filter(
       (inv) =>
         inv.status === "SENT" &&
@@ -73,19 +61,18 @@ export async function GET(req: NextRequest) {
     .map((inv) => inv.id);
 
   if (toMarkOverdue.length > 0) {
-    await db.invoice.updateMany({
-      where: { id: { in: toMarkOverdue } },
-      data: { status: "OVERDUE" },
-    });
-    // Update in-memory
-    for (const inv of invoices) {
-      if (toMarkOverdue.includes(inv.id)) {
-        inv.status = "OVERDUE";
-      }
-    }
+    await db
+      .update(invoices)
+      .set({ status: "OVERDUE" })
+      .where(inArray(invoices.id, toMarkOverdue));
   }
 
-  return Response.json(invoices.map(serializeInvoice));
+  const response = filtered.map((inv) => ({
+    ...inv,
+    status: toMarkOverdue.includes(inv.id) ? ("OVERDUE" as const) : inv.status,
+  }));
+
+  return Response.json(response);
 }
 
 export async function POST(req: NextRequest) {
@@ -112,28 +99,31 @@ export async function POST(req: NextRequest) {
   const data = parsed.data;
 
   // Verify client belongs to user
-  const client = await db.client.findFirst({
-    where: { id: data.clientId, userId: session.user.id },
+  const client = await db.query.clients.findFirst({
+    where: and(eq(clients.id, data.clientId), eq(clients.userId, session.user.id)),
   });
   if (!client) {
     return Response.json({ error: "Client not found" }, { status: 404 });
   }
 
   // Generate invoice number
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  const year = new Date().getFullYear();
-  const existingCount = await db.invoice.count({
-    where: {
-      userId: session.user.id,
-      invoiceNumber: { startsWith: `${user?.invoicePrefix ?? "INV"}-${year}-` },
-    },
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, session.user.id),
+    columns: { invoicePrefix: true },
   });
+  const prefix = user?.invoicePrefix ?? "INV";
+  const year = new Date().getFullYear();
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(invoices)
+    .where(
+      and(
+        eq(invoices.userId, session.user.id),
+        like(invoices.invoiceNumber, `${prefix}-${year}-%`)
+      )
+    );
 
-  const invoiceNumber = generateInvoiceNumber(
-    user?.invoicePrefix ?? "INV",
-    year,
-    existingCount + 1
-  );
+  const invoiceNumber = generateInvoiceNumber(prefix, year, n + 1);
 
   // Calculate totals
   const totals = calculateInvoiceTotals({
@@ -144,18 +134,15 @@ export async function POST(req: NextRequest) {
     taxRate: data.taxRate ?? 0,
   });
 
-  const invoice = await db.invoice.create({
-    data: {
+  const [invoice] = await db
+    .insert(invoices)
+    .values({
       userId: session.user.id,
       clientId: data.clientId,
       invoiceNumber,
       billingType: data.billingType,
-      billingPeriodStart: data.billingPeriodStart
-        ? new Date(data.billingPeriodStart)
-        : null,
-      billingPeriodEnd: data.billingPeriodEnd
-        ? new Date(data.billingPeriodEnd)
-        : null,
+      billingPeriodStart: data.billingPeriodStart ?? null,
+      billingPeriodEnd: data.billingPeriodEnd ?? null,
       hoursWorked: data.hoursWorked ?? null,
       hourlyRate: data.hourlyRate ?? null,
       fixedAmount: data.fixedAmount ?? null,
@@ -164,15 +151,19 @@ export async function POST(req: NextRequest) {
       taxAmount: totals.taxAmount,
       total: totals.total,
       currency: data.currency,
-      dueDate: data.dueDate ? new Date(data.dueDate) : null,
+      dueDate: data.dueDate ?? null,
       taskSummary: data.taskSummary ?? null,
       notes: data.notes ?? null,
       paymentInstructions: data.paymentInstructions ?? null,
       privateNotes: data.privateNotes ?? null,
-    },
-    include: {
+    })
+    .returning();
+
+  const invoiceWithClient = await db.query.invoices.findFirst({
+    where: eq(invoices.id, invoice.id),
+    with: {
       client: {
-        select: {
+        columns: {
           id: true,
           name: true,
           companyName: true,
@@ -184,7 +175,6 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return Response.json(serializeInvoice(invoice as unknown as Record<string, unknown>), {
-    status: 201,
-  });
+  return Response.json(invoiceWithClient, { status: 201 });
 }
+

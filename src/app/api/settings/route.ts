@@ -1,8 +1,10 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { users, accounts } from "@/lib/schema";
 import { settingsSchema } from "@/lib/validations";
 import { NextRequest } from "next/server";
+import { and, eq } from "drizzle-orm";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -10,9 +12,9 @@ export async function GET() {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, session.user.id),
+    columns: {
       id: true,
       name: true,
       email: true,
@@ -38,18 +40,15 @@ export async function GET() {
   }
 
   // Check if Gmail is connected (account with gmail scope exists)
-  const gmailAccount = await db.account.findFirst({
-    where: {
-      userId: session.user.id,
-      provider: "google",
-      scope: { contains: "gmail" },
-    },
+  const gmailAccount = await db.query.accounts.findFirst({
+    where: and(eq(accounts.userId, session.user.id), eq(accounts.provider, "google")),
   });
+  const gmailConnected = gmailAccount?.scope?.includes("gmail") ?? false;
 
   return Response.json({
     ...user,
     defaultTaxRate: Number(user.defaultTaxRate),
-    gmailConnected: !!gmailAccount,
+    gmailConnected,
   });
 }
 
@@ -74,9 +73,9 @@ export async function PUT(req: NextRequest) {
     );
   }
 
-  const user = await db.user.update({
-    where: { id: session.user.id },
-    data: {
+  const [user] = await db
+    .update(users)
+    .set({
       name: parsed.data.name,
       businessName: parsed.data.businessName || null,
       businessEmail: parsed.data.businessEmail || null,
@@ -90,8 +89,11 @@ export async function PUT(req: NextRequest) {
       paymentInstructions: parsed.data.paymentInstructions || null,
       defaultEmailSubject: parsed.data.defaultEmailSubject,
       defaultEmailBody: parsed.data.defaultEmailBody,
-    },
-  });
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(users.id, session.user.id))
+    .returning();
 
   return Response.json({ ...user, defaultTaxRate: Number(user.defaultTaxRate) });
 }
+

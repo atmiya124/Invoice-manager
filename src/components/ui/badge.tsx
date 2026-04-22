@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { InvoiceStatus } from "@/generated/prisma/client";
+import type { InvoiceStatus } from "@/types";
 
 const statusConfig: Record<
   InvoiceStatus,

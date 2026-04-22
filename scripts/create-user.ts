@@ -1,31 +1,35 @@
-import { PrismaLibSql } from "@prisma/adapter-libsql";
-import { PrismaClient } from "../src/generated/prisma/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { createClient } from "@libsql/client";
+import * as schema from "../src/lib/schema";
+import { users } from "../src/lib/schema";
 import bcrypt from "bcryptjs";
-import path from "path";
 import { config } from "dotenv";
 
 config({ path: ".env.local" });
 config();
 
 async function main() {
-  const dbUrl = process.env.DATABASE_URL!;
-  const url = dbUrl.startsWith("file:.")
-    ? `file:///${path.resolve(process.cwd(), dbUrl.slice(5)).replace(/\\/g, "/")}`
-    : dbUrl;
-
+  const url = process.env.DATABASE_URL ?? "file:./prisma/dev.db";
+  const authToken = process.env.DATABASE_AUTH_TOKEN;
   console.log("DB:", url);
 
-  const adapter = new PrismaLibSql({ url });
-  const db = new PrismaClient({ adapter });
+  const client = createClient({ url, ...(authToken ? { authToken } : {}) });
+  const db = drizzle(client, { schema });
 
   const hash = await bcrypt.hash("Password123", 10);
-  const user = await db.user.upsert({
-    where: { email: "atmiya124@gmail.com" },
-    update: { passwordHash: hash },
-    create: { email: "atmiya124@gmail.com", name: "Atmiya", passwordHash: hash },
-  });
+  await db
+    .insert(users)
+    .values({ email: "atmiya124@gmail.com", name: "Atmiya", passwordHash: hash })
+    .onConflictDoUpdate({ target: users.email, set: { passwordHash: hash } });
+
+  const user = (await db.query.users.findFirst({
+    where: (u, { eq }) => eq(u.email, "atmiya124@gmail.com"),
+  }))!;
   console.log("✓ User ready:", user.id, user.email);
-  await db.$disconnect();
+  client.close();
 }
+
+main().catch(console.error);
+
 
 main().catch((e) => { console.error(e); process.exit(1); });

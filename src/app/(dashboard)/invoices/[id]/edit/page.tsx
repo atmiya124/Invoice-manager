@@ -12,23 +12,20 @@ export default async function EditInvoicePage({ params }: Params) {
 
   const { id } = await params;
 
+  const { invoices: invoicesTable, clients: clientsTable } = await import("@/lib/schema");
+  const { and, eq, asc } = await import("drizzle-orm");
+
   const [invoice, clients] = await Promise.all([
-    db.invoice.findFirst({
-      where: { id, userId: session.user.id },
+    db.query.invoices.findFirst({
+      where: and(eq(invoicesTable.id, id), eq(invoicesTable.userId, session.user.id)),
     }),
-    db.client.findMany({
-      where: { userId: session.user.id, isArchived: false },
-      orderBy: { name: "asc" },
+    db.query.clients.findMany({
+      where: and(eq(clientsTable.userId, session.user.id), eq(clientsTable.isArchived, false)),
+      orderBy: asc(clientsTable.name),
     }),
   ]);
 
   if (!invoice) notFound();
-
-  const serializedClients = clients.map((c) => ({
-    ...c,
-    hourlyRate: c.hourlyRate ? Number(c.hourlyRate) : null,
-    fixedRate: c.fixedRate ? Number(c.fixedRate) : null,
-  }));
 
   return (
     <div className="max-w-3xl">
@@ -37,22 +34,22 @@ export default async function EditInvoicePage({ params }: Params) {
         <span className="font-medium">{invoice.status}</span>
       </p>
       <InvoiceForm
-        clients={serializedClients as any}
+        clients={clients as any}
         defaultValues={{
           clientId: invoice.clientId,
           billingType: invoice.billingType,
           currency: invoice.currency,
-          taxRate: Number(invoice.taxRate),
-          hoursWorked: invoice.hoursWorked ? Number(invoice.hoursWorked) : undefined,
-          hourlyRate: invoice.hourlyRate ? Number(invoice.hourlyRate) : undefined,
-          fixedAmount: invoice.fixedAmount ? Number(invoice.fixedAmount) : undefined,
+          taxRate: invoice.taxRate ?? 0,
+          hoursWorked: invoice.hoursWorked ?? undefined,
+          hourlyRate: invoice.hourlyRate ?? undefined,
+          fixedAmount: invoice.fixedAmount ?? undefined,
           taskSummary: invoice.taskSummary ?? undefined,
           notes: invoice.notes ?? undefined,
           privateNotes: invoice.privateNotes ?? undefined,
           paymentInstructions: invoice.paymentInstructions ?? undefined,
-          billingPeriodStart: invoice.billingPeriodStart?.toISOString() ?? null,
-          billingPeriodEnd: invoice.billingPeriodEnd?.toISOString() ?? null,
-          dueDate: invoice.dueDate?.toISOString() ?? undefined,
+          billingPeriodStart: invoice.billingPeriodStart ?? null,
+          billingPeriodEnd: invoice.billingPeriodEnd ?? null,
+          dueDate: invoice.dueDate ?? undefined,
         }}
         invoiceId={invoice.id}
       />

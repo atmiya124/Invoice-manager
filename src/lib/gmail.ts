@@ -1,13 +1,15 @@
 import { google } from "googleapis";
 import { db } from "@/lib/db";
+import { accounts } from "@/lib/schema";
+import { and, eq } from "drizzle-orm";
 
 /**
  * Creates an authenticated Gmail OAuth2 client for a given user.
  * Automatically refreshes the access token if expired.
  */
 async function getGmailClient(userId: string) {
-  const account = await db.account.findFirst({
-    where: { userId, provider: "google" },
+  const account = await db.query.accounts.findFirst({
+    where: and(eq(accounts.userId, userId), eq(accounts.provider, "google")),
   });
 
   if (!account?.access_token && !account?.refresh_token) {
@@ -32,15 +34,15 @@ async function getGmailClient(userId: string) {
   if (expiresAt < Date.now() + 5 * 60 * 1000) {
     try {
       const { credentials } = await oauth2Client.refreshAccessToken();
-      await db.account.update({
-        where: { id: account.id },
-        data: {
-          access_token: credentials.access_token,
+      await db
+        .update(accounts)
+        .set({
+          access_token: credentials.access_token ?? undefined,
           expires_at: credentials.expiry_date
             ? Math.floor(credentials.expiry_date / 1000)
             : undefined,
-        },
-      });
+        })
+        .where(eq(accounts.id, account.id));
       oauth2Client.setCredentials(credentials);
     } catch {
       throw new Error(

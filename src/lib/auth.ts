@@ -2,6 +2,8 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
+import { users } from "@/lib/schema";
+import { eq } from "drizzle-orm";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -15,8 +17,8 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) return null;
 
         try {
-          const user = await db.user.findUnique({
-            where: { email: credentials.email },
+          const user = await db.query.users.findFirst({
+            where: eq(users.email, credentials.email),
           });
 
           console.log("[authorize] user found:", !!user, "has hash:", !!user?.passwordHash);
@@ -59,3 +61,4 @@ export const authOptions: NextAuthOptions = {
     },
   },
 };
+

@@ -1,8 +1,9 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { format, startOfMonth, endOfMonth, subMonths, isAfter } from "date-fns";
-import { isAfter as dfIsAfter } from "date-fns";
+import { invoices, clients } from "@/lib/schema";
+import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { and, eq, desc, lt } from "drizzle-orm";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -16,21 +17,23 @@ export async function GET() {
   const monthEnd = endOfMonth(now);
 
   // Auto-mark overdue
-  await db.invoice.updateMany({
-    where: {
-      userId,
-      status: "SENT",
-      dueDate: { lt: now },
-    },
-    data: { status: "OVERDUE" },
-  });
+  await db
+    .update(invoices)
+    .set({ status: "OVERDUE" })
+    .where(
+      and(
+        eq(invoices.userId, userId),
+        eq(invoices.status, "SENT"),
+        lt(invoices.dueDate, now.toISOString())
+      )
+    );
 
-  const [invoices, clients] = await Promise.all([
-    db.invoice.findMany({
-      where: { userId },
-      include: {
+  const [invoiceList, clientList] = await Promise.all([
+    db.query.invoices.findMany({
+      where: eq(invoices.userId, userId),
+      with: {
         client: {
-          select: {
+          columns: {
             id: true,
             name: true,
             companyName: true,
@@ -40,25 +43,25 @@ export async function GET() {
           },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: desc(invoices.createdAt),
     }),
-    db.client.findMany({
-      where: { userId, isArchived: false },
-      include: {
+    db.query.clients.findMany({
+      where: and(eq(clients.userId, userId), eq(clients.isArchived, false)),
+      with: {
         invoices: {
-          select: { status: true, total: true, createdAt: true },
-          orderBy: { createdAt: "desc" },
+          columns: { status: true, total: true, createdAt: true },
+          orderBy: desc(invoices.createdAt),
         },
       },
     }),
   ]);
 
   // Stats
-  const totalUnpaid = invoices
+  const totalUnpaid = invoiceList
     .filter((inv) => inv.status === "SENT" || inv.status === "OVERDUE")
-    .reduce((sum, inv) => sum + Number(inv.total), 0);
+    .reduce((sum, inv) => sum + inv.total, 0);
 
-  const paidThisMonth = invoices
+  const paidThisMonth = invoiceList
     .filter(
       (inv) =>
         inv.status === "PAID" &&
@@ -66,20 +69,17 @@ export async function GET() {
         new Date(inv.paidAt) >= monthStart &&
         new Date(inv.paidAt) <= monthEnd
     )
-    .reduce((sum, inv) => sum + Number(inv.total), 0);
+    .reduce((sum, inv) => sum + inv.total, 0);
 
-  const sentThisMonth = invoices.filter(
+  const sentThisMonth = invoiceList.filter(
     (inv) =>
       inv.sentAt &&
       new Date(inv.sentAt) >= monthStart &&
       new Date(inv.sentAt) <= monthEnd
   ).length;
 
-  const overdueInvoices = invoices.filter((inv) => inv.status === "OVERDUE");
-  const overdueAmount = overdueInvoices.reduce(
-    (sum, inv) => sum + Number(inv.total),
-    0
-  );
+  const overdueInvoices = invoiceList.filter((inv) => inv.status === "OVERDUE");
+  const overdueAmount = overdueInvoices.reduce((sum, inv) => sum + inv.total, 0);
 
   // Monthly earnings (last 6 months)
   const monthlyEarnings: { month: string; paid: number; pending: number }[] = [];
@@ -89,7 +89,7 @@ export async function GET() {
     const mEnd = endOfMonth(monthDate);
     const monthLabel = format(monthDate, "MMM");
 
-    const paid = invoices
+    const paid = invoiceList
       .filter(
         (inv) =>
           inv.status === "PAID" &&
@@ -97,33 +97,29 @@ export async function GET() {
           new Date(inv.paidAt) >= mStart &&
           new Date(inv.paidAt) <= mEnd
       )
-      .reduce((sum, inv) => sum + Number(inv.total), 0);
+      .reduce((sum, inv) => sum + inv.total, 0);
 
-    const pending = invoices
+    const pending = invoiceList
       .filter(
         (inv) =>
           (inv.status === "SENT" || inv.status === "OVERDUE") &&
           new Date(inv.createdAt) >= mStart &&
           new Date(inv.createdAt) <= mEnd
       )
-      .reduce((sum, inv) => sum + Number(inv.total), 0);
+      .reduce((sum, inv) => sum + inv.total, 0);
 
     monthlyEarnings.push({ month: monthLabel, paid, pending });
   }
 
   // Earnings by client
   const clientEarnings = new Map<string, { name: string; total: number }>();
-  for (const inv of invoices.filter((i) => i.status === "PAID")) {
-    const clientName =
-      inv.client.companyName || inv.client.name;
+  for (const inv of invoiceList.filter((i) => i.status === "PAID")) {
+    const clientName = inv.client.companyName || inv.client.name;
     const existing = clientEarnings.get(inv.clientId);
     if (existing) {
-      existing.total += Number(inv.total);
+      existing.total += inv.total;
     } else {
-      clientEarnings.set(inv.clientId, {
-        name: clientName,
-        total: Number(inv.total),
-      });
+      clientEarnings.set(inv.clientId, { name: clientName, total: inv.total });
     }
   }
 
@@ -132,12 +128,12 @@ export async function GET() {
     .slice(0, 5);
 
   // Clients due for invoicing
-  const clientsDue = clients
+  const clientsDue = clientList
     .map((client) => {
       const lastInvoice = client.invoices[0];
       const unpaidBalance = client.invoices
         .filter((inv) => inv.status === "SENT" || inv.status === "OVERDUE")
-        .reduce((sum, inv) => sum + Number(inv.total), 0);
+        .reduce((sum, inv) => sum + inv.total, 0);
 
       let isDue = false;
       if (client.billingCycle !== "CUSTOM" && lastInvoice) {
@@ -146,11 +142,7 @@ export async function GET() {
           (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24)
         );
         const cycleDays =
-          client.billingCycle === "WEEKLY"
-            ? 7
-            : client.billingCycle === "BIWEEKLY"
-            ? 14
-            : 30;
+          client.billingCycle === "WEEKLY" ? 7 : client.billingCycle === "BIWEEKLY" ? 14 : 30;
         isDue = daysSinceLast >= cycleDays;
       } else if (!lastInvoice) {
         isDue = true;
@@ -158,8 +150,6 @@ export async function GET() {
 
       return {
         ...client,
-        hourlyRate: client.hourlyRate ? Number(client.hourlyRate) : null,
-        fixedRate: client.fixedRate ? Number(client.fixedRate) : null,
         unpaidBalance,
         totalInvoices: client.invoices.length,
         lastInvoiceDate: lastInvoice?.createdAt ?? null,
@@ -175,18 +165,11 @@ export async function GET() {
     sentThisMonth,
     overdueCount: overdueInvoices.length,
     overdueAmount,
-    recentInvoices: invoices.slice(0, 8).map((inv) => ({
-      ...inv,
-      total: Number(inv.total),
-      subtotal: Number(inv.subtotal),
-      taxAmount: Number(inv.taxAmount),
-      taxRate: Number(inv.taxRate),
-      hoursWorked: inv.hoursWorked ? Number(inv.hoursWorked) : null,
-      hourlyRate: inv.hourlyRate ? Number(inv.hourlyRate) : null,
-      fixedAmount: inv.fixedAmount ? Number(inv.fixedAmount) : null,
-    })),
+    recentInvoices: invoiceList.slice(0, 8),
     clientsDue,
     monthlyEarnings,
     earningsByClient,
   });
 }
+
+

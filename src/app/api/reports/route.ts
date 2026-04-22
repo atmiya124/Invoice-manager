@@ -1,7 +1,9 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invoices } from "@/lib/schema";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { eq, desc } from "drizzle-orm";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -12,11 +14,11 @@ export async function GET() {
   const userId = session.user.id;
   const now = new Date();
 
-  const invoices = await db.invoice.findMany({
-    where: { userId },
-    include: {
+  const invoiceList = await db.query.invoices.findMany({
+    where: eq(invoices.userId, userId),
+    with: {
       client: {
-        select: {
+        columns: {
           id: true,
           name: true,
           companyName: true,
@@ -26,7 +28,7 @@ export async function GET() {
         },
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: desc(invoices.createdAt),
   });
 
   // Monthly income (paid, last 12 months)
@@ -36,7 +38,7 @@ export async function GET() {
     const mStart = startOfMonth(monthDate);
     const mEnd = endOfMonth(monthDate);
 
-    const amount = invoices
+    const amount = invoiceList
       .filter(
         (inv) =>
           inv.status === "PAID" &&
@@ -44,7 +46,7 @@ export async function GET() {
           new Date(inv.paidAt) >= mStart &&
           new Date(inv.paidAt) <= mEnd
       )
-      .reduce((sum, inv) => sum + Number(inv.total), 0);
+      .reduce((sum, inv) => sum + inv.total, 0);
 
     monthlyIncome.push({ month: format(monthDate, "MMM yyyy"), amount });
   }
@@ -54,16 +56,16 @@ export async function GET() {
     string,
     { clientName: string; companyName: string | null; amount: number }
   >();
-  for (const inv of invoices.filter((i) => i.status === "PAID")) {
+  for (const inv of invoiceList.filter((i) => i.status === "PAID")) {
     const key = inv.clientId;
     const existing = clientMap.get(key);
     if (existing) {
-      existing.amount += Number(inv.total);
+      existing.amount += inv.total;
     } else {
       clientMap.set(key, {
         clientName: inv.client.name,
         companyName: inv.client.companyName,
-        amount: Number(inv.total),
+        amount: inv.total,
       });
     }
   }
@@ -73,33 +75,16 @@ export async function GET() {
 
   // Summary
   const summary = {
-    totalPaid: invoices
-      .filter((i) => i.status === "PAID")
-      .reduce((s, i) => s + Number(i.total), 0),
-    totalUnpaid: invoices
-      .filter((i) => i.status === "SENT")
-      .reduce((s, i) => s + Number(i.total), 0),
-    totalOverdue: invoices
-      .filter((i) => i.status === "OVERDUE")
-      .reduce((s, i) => s + Number(i.total), 0),
-    totalDraft: invoices
-      .filter((i) => i.status === "DRAFT")
-      .reduce((s, i) => s + Number(i.total), 0),
+    totalPaid: invoiceList.filter((i) => i.status === "PAID").reduce((s, i) => s + i.total, 0),
+    totalUnpaid: invoiceList.filter((i) => i.status === "SENT").reduce((s, i) => s + i.total, 0),
+    totalOverdue: invoiceList.filter((i) => i.status === "OVERDUE").reduce((s, i) => s + i.total, 0),
+    totalDraft: invoiceList.filter((i) => i.status === "DRAFT").reduce((s, i) => s + i.total, 0),
   };
 
   // Unpaid invoices
-  const unpaidInvoices = invoices
-    .filter((i) => i.status === "SENT" || i.status === "OVERDUE")
-    .map((inv) => ({
-      ...inv,
-      total: Number(inv.total),
-      subtotal: Number(inv.subtotal),
-      taxAmount: Number(inv.taxAmount),
-      taxRate: Number(inv.taxRate),
-      hoursWorked: inv.hoursWorked ? Number(inv.hoursWorked) : null,
-      hourlyRate: inv.hourlyRate ? Number(inv.hourlyRate) : null,
-      fixedAmount: inv.fixedAmount ? Number(inv.fixedAmount) : null,
-    }));
+  const unpaidInvoices = invoiceList.filter(
+    (i) => i.status === "SENT" || i.status === "OVERDUE"
+  );
 
   return Response.json({ monthlyIncome, clientIncome, unpaidInvoices, summary });
 }

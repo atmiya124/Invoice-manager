@@ -1,6 +1,26 @@
-import { BillingCycle, BillingType, InvoiceStatus } from "@/generated/prisma/client";
+export type BillingCycle = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "CUSTOM";
+export type BillingType = "HOURLY" | "FIXED";
+export type InvoiceStatus = "DRAFT" | "SENT" | "PAID" | "OVERDUE";
 
-export type { BillingCycle, BillingType, InvoiceStatus };
+export interface Client {
+  id: string;
+  userId: string;
+  name: string;
+  companyName: string | null;
+  email: string;
+  billingAddress: string | null;
+  hourlyRate: number | null;
+  fixedRate: number | null;
+  billingCycle: BillingCycle;
+  paymentTerms: string;
+  currency: string;
+  defaultNotes: string | null;
+  emailTemplate: string | null;
+  paymentInstructions: string | null;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface ClientWithStats {
   id: string;
@@ -18,12 +38,12 @@ export interface ClientWithStats {
   emailTemplate: string | null;
   paymentInstructions: string | null;
   isArchived: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string;
+  updatedAt: string;
   // computed
   unpaidBalance: number;
   totalInvoices: number;
-  lastInvoiceDate: Date | null;
+  lastInvoiceDate: string | null;
 }
 
 export interface InvoiceWithClient {
@@ -33,8 +53,8 @@ export interface InvoiceWithClient {
   invoiceNumber: string;
   status: InvoiceStatus;
   billingType: BillingType;
-  billingPeriodStart: Date | null;
-  billingPeriodEnd: Date | null;
+  billingPeriodStart: string | null;
+  billingPeriodEnd: string | null;
   hoursWorked: number | null;
   hourlyRate: number | null;
   fixedAmount: number | null;
@@ -43,9 +63,9 @@ export interface InvoiceWithClient {
   taxAmount: number;
   total: number;
   currency: string;
-  dueDate: Date | null;
-  sentAt: Date | null;
-  paidAt: Date | null;
+  dueDate: string | null;
+  sentAt: string | null;
+  paidAt: string | null;
   paymentMethod: string | null;
   taskSummary: string | null;
   notes: string | null;
@@ -53,8 +73,8 @@ export interface InvoiceWithClient {
   privateNotes: string | null;
   emailSubject: string | null;
   emailBody: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string;
+  updatedAt: string;
   client: {
     id: string;
     name: string;

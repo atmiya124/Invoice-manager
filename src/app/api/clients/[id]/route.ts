@@ -1,8 +1,10 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { clients, invoices } from "@/lib/schema";
 import { clientSchema } from "@/lib/validations";
 import { NextRequest } from "next/server";
+import { and, eq, desc, count } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -14,12 +16,23 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const client = await db.client.findFirst({
-    where: { id, userId: session.user.id },
-    include: {
+  const client = await db.query.clients.findFirst({
+    where: and(eq(clients.id, id), eq(clients.userId, session.user.id)),
+    with: {
       invoices: {
-        include: { client: { select: { id: true, name: true, companyName: true, email: true, billingAddress: true, currency: true } } },
-        orderBy: { createdAt: "desc" },
+        with: {
+          client: {
+            columns: {
+              id: true,
+              name: true,
+              companyName: true,
+              email: true,
+              billingAddress: true,
+              currency: true,
+            },
+          },
+        },
+        orderBy: desc(invoices.createdAt),
       },
     },
   });
@@ -28,21 +41,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  return Response.json({
-    ...client,
-    hourlyRate: client.hourlyRate ? Number(client.hourlyRate) : null,
-    fixedRate: client.fixedRate ? Number(client.fixedRate) : null,
-    invoices: client.invoices.map((inv) => ({
-      ...inv,
-      total: Number(inv.total),
-      subtotal: Number(inv.subtotal),
-      taxAmount: Number(inv.taxAmount),
-      taxRate: Number(inv.taxRate),
-      hoursWorked: inv.hoursWorked ? Number(inv.hoursWorked) : null,
-      hourlyRate: inv.hourlyRate ? Number(inv.hourlyRate) : null,
-      fixedAmount: inv.fixedAmount ? Number(inv.fixedAmount) : null,
-    })),
-  });
+  return Response.json(client);
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
@@ -53,8 +52,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const existing = await db.client.findFirst({
-    where: { id, userId: session.user.id },
+  const existing = await db.query.clients.findFirst({
+    where: and(eq(clients.id, id), eq(clients.userId, session.user.id)),
   });
   if (!existing) {
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -75,14 +74,16 @@ export async function PUT(req: NextRequest, { params }: Params) {
     );
   }
 
-  const client = await db.client.update({
-    where: { id },
-    data: {
+  const [client] = await db
+    .update(clients)
+    .set({
       ...parsed.data,
       hourlyRate: parsed.data.hourlyRate ?? null,
       fixedRate: parsed.data.fixedRate ?? null,
-    },
-  });
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(clients.id, id))
+    .returning();
 
   return Response.json(client);
 }
@@ -95,8 +96,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const existing = await db.client.findFirst({
-    where: { id, userId: session.user.id },
+  const existing = await db.query.clients.findFirst({
+    where: and(eq(clients.id, id), eq(clients.userId, session.user.id)),
   });
   if (!existing) {
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -109,10 +110,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const client = await db.client.update({
-    where: { id },
-    data: body as Record<string, unknown>,
-  });
+  const [client] = await db
+    .update(clients)
+    .set({ ...(body as Record<string, unknown>), updatedAt: new Date().toISOString() })
+    .where(eq(clients.id, id))
+    .returning();
 
   return Response.json(client);
 }
@@ -125,22 +127,27 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const existing = await db.client.findFirst({
-    where: { id, userId: session.user.id },
+  const existing = await db.query.clients.findFirst({
+    where: and(eq(clients.id, id), eq(clients.userId, session.user.id)),
   });
   if (!existing) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  const invoiceCount = await db.invoice.count({ where: { clientId: id } });
-  if (invoiceCount > 0) {
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(invoices)
+    .where(eq(invoices.clientId, id));
+
+  if (n > 0) {
     return Response.json(
       { error: "Cannot delete a client with invoices. Archive them instead." },
       { status: 409 }
     );
   }
 
-  await db.client.delete({ where: { id } });
+  await db.delete(clients).where(eq(clients.id, id));
 
   return new Response(null, { status: 204 });
 }
+

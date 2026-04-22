@@ -259,8 +259,8 @@ export interface InvoicePDFProps {
     invoiceNumber: string;
     status: string;
     billingType: string;
-    billingPeriodStart: Date | null;
-    billingPeriodEnd: Date | null;
+    billingPeriodStart: Date | string | null;
+    billingPeriodEnd: Date | string | null;
     hoursWorked: number | null;
     hourlyRate: number | null;
     fixedAmount: number | null;
@@ -269,8 +269,8 @@ export interface InvoicePDFProps {
     taxAmount: number;
     total: number;
     currency: string;
-    dueDate: Date | null;
-    createdAt: Date;
+    dueDate: Date | string | null;
+    createdAt: Date | string;
     taskSummary: string | null;
     notes: string | null;
     paymentInstructions: string | null;

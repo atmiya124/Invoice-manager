@@ -13,7 +13,7 @@ import { Eye, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { Client } from "@/generated/prisma/client";
+import type { Client } from "@/types";
 import {
   calculateInvoiceTotals,
   formatCurrency,

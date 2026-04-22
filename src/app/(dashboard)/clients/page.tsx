@@ -10,15 +10,18 @@ export default async function ClientsPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect("/login");
 
-  const clients = await db.client.findMany({
-    where: { userId: session.user.id },
-    include: {
+  const { clients: clientsTable, invoices } = await import("@/lib/schema");
+  const { eq, desc } = await import("drizzle-orm");
+
+  const clients = await db.query.clients.findMany({
+    where: eq(clientsTable.userId, session.user.id),
+    with: {
       invoices: {
-        select: { status: true, total: true, createdAt: true },
-        orderBy: { createdAt: "desc" },
+        columns: { status: true, total: true, createdAt: true },
+        orderBy: desc(invoices.createdAt),
       },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: desc(clientsTable.createdAt),
   });
 
   const activeClients = clients
@@ -29,17 +32,11 @@ export default async function ClientsPage() {
         ? Math.floor((Date.now() - new Date(last.createdAt).getTime()) / 86400000)
         : 999;
       const cycleDays =
-        client.billingCycle === "WEEKLY"
-          ? 7
-          : client.billingCycle === "BIWEEKLY"
-          ? 14
-          : 30;
+        client.billingCycle === "WEEKLY" ? 7 : client.billingCycle === "BIWEEKLY" ? 14 : 30;
       const isDue = client.billingCycle !== "CUSTOM" && (!last || daysSince >= cycleDays);
 
       return {
         ...client,
-        hourlyRate: client.hourlyRate ? Number(client.hourlyRate) : null,
-        fixedRate: client.fixedRate ? Number(client.fixedRate) : null,
         totalInvoices: client.invoices.length,
         isDue,
         invoices: undefined,

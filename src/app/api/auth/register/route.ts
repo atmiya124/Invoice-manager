@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
+import { users } from "@/lib/schema";
+import { eq } from "drizzle-orm";
 
 export async function POST(req: Request) {
   const { email, password, name } = await req.json();
@@ -13,19 +15,17 @@ export async function POST(req: Request) {
   }
 
   try {
-    const existing = await db.user.findUnique({ where: { email } });
+    const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
     if (existing) {
       return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await db.user.create({
-      data: {
-        email,
-        name: name?.trim() || email.split("@")[0],
-        passwordHash,
-      },
-    });
+    const [user] = await db.insert(users).values({
+      email,
+      name: name?.trim() || email.split("@")[0],
+      passwordHash,
+    }).returning();
     console.log("[register] created user:", user.id, user.email);
 
     return NextResponse.json({ ok: true });

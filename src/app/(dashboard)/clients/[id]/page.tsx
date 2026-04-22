@@ -26,30 +26,24 @@ export default async function ClientDetailPage({ params }: Params) {
 
   const { id } = await params;
 
-  const client = await db.client.findFirst({
-    where: { id, userId: session.user.id },
-    include: {
+  const { clients: clientsTable, invoices: invoicesTable } = await import("@/lib/schema");
+  const { and, eq, desc } = await import("drizzle-orm");
+
+  const client = await db.query.clients.findFirst({
+    where: and(eq(clientsTable.id, id), eq(clientsTable.userId, session.user.id)),
+    with: {
       invoices: {
-        include: {
-          client: { select: { id: true, name: true, companyName: true, email: true, billingAddress: true, currency: true } },
+        with: {
+          client: { columns: { id: true, name: true, companyName: true, email: true, billingAddress: true, currency: true } },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: desc(invoicesTable.createdAt),
       },
     },
   });
 
   if (!client) notFound();
 
-  const invoices: InvoiceWithClient[] = client.invoices.map((inv) => ({
-    ...inv,
-    total: Number(inv.total),
-    subtotal: Number(inv.subtotal),
-    taxAmount: Number(inv.taxAmount),
-    taxRate: Number(inv.taxRate),
-    hoursWorked: inv.hoursWorked ? Number(inv.hoursWorked) : null,
-    hourlyRate: inv.hourlyRate ? Number(inv.hourlyRate) : null,
-    fixedAmount: inv.fixedAmount ? Number(inv.fixedAmount) : null,
-  }));
+  const invoices: InvoiceWithClient[] = client.invoices as InvoiceWithClient[];
 
   const totalInvoices = invoices.length;
 

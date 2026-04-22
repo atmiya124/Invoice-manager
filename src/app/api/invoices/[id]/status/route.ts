@@ -1,8 +1,10 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invoices } from "@/lib/schema";
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { and, eq } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -20,8 +22,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const invoice = await db.invoice.findFirst({
-    where: { id, userId: session.user.id },
+  const invoice = await db.query.invoices.findFirst({
+    where: and(eq(invoices.id, id), eq(invoices.userId, session.user.id)),
   });
   if (!invoice) {
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -42,19 +44,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     );
   }
 
-  const updated = await db.invoice.update({
-    where: { id },
-    data: {
+  const [updated] = await db
+    .update(invoices)
+    .set({
       status: parsed.data.status,
       paidAt:
         parsed.data.status === "PAID"
           ? parsed.data.paidAt
-            ? new Date(parsed.data.paidAt)
-            : new Date()
+            ? new Date(parsed.data.paidAt).toISOString()
+            : new Date().toISOString()
           : undefined,
       paymentMethod: parsed.data.paymentMethod ?? undefined,
-    },
-  });
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(invoices.id, id))
+    .returning();
 
-  return Response.json({ ...updated, total: Number(updated.total) });
+  return Response.json(updated);
 }
+

@@ -1,10 +1,12 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invoices } from "@/lib/schema";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { InvoicePDF } from "@/lib/pdf";
 import { NextRequest } from "next/server";
 import React from "react";
+import { and, eq } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -16,11 +18,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const invoice = await db.invoice.findFirst({
-    where: { id, userId: session.user.id },
-    include: {
+  const invoice = await db.query.invoices.findFirst({
+    where: and(eq(invoices.id, id), eq(invoices.userId, session.user.id)),
+    with: {
       client: {
-        select: {
+        columns: {
           name: true,
           companyName: true,
           email: true,
@@ -28,7 +30,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         },
       },
       user: {
-        select: {
+        columns: {
           name: true,
           businessName: true,
           businessEmail: true,
@@ -45,19 +47,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  const invoiceData = {
-    ...invoice,
-    total: Number(invoice.total),
-    subtotal: Number(invoice.subtotal),
-    taxAmount: Number(invoice.taxAmount),
-    taxRate: Number(invoice.taxRate),
-    hoursWorked: invoice.hoursWorked ? Number(invoice.hoursWorked) : null,
-    hourlyRate: invoice.hourlyRate ? Number(invoice.hourlyRate) : null,
-    fixedAmount: invoice.fixedAmount ? Number(invoice.fixedAmount) : null,
-  };
-
   const buffer = await renderToBuffer(
-    React.createElement(InvoicePDF, { invoice: invoiceData, user: invoice.user }) as any
+    React.createElement(InvoicePDF, { invoice, user: invoice.user }) as any
   );
 
   return new Response(new Uint8Array(buffer), {
@@ -69,3 +60,4 @@ export async function GET(_req: NextRequest, { params }: Params) {
     },
   });
 }
+

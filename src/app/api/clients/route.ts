@@ -1,9 +1,10 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { clients, invoices } from "@/lib/schema";
 import { clientSchema } from "@/lib/validations";
 import { NextRequest } from "next/server";
-import { z } from "zod";
+import { eq, desc } from "drizzle-orm";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -11,18 +12,18 @@ export async function GET() {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const clients = await db.client.findMany({
-    where: { userId: session.user.id },
-    include: {
+  const clientList = await db.query.clients.findMany({
+    where: eq(clients.userId, session.user.id),
+    with: {
       invoices: {
-        select: { status: true, total: true, createdAt: true },
-        orderBy: { createdAt: "desc" },
+        columns: { status: true, total: true, createdAt: true },
+        orderBy: desc(invoices.createdAt),
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: desc(clients.createdAt),
   });
 
-  const result = clients.map((client) => {
+  const result = clientList.map((client) => {
     const unpaidBalance = client.invoices
       .filter((inv) => inv.status === "SENT" || inv.status === "OVERDUE")
       .reduce((sum, inv) => sum + Number(inv.total), 0);
@@ -31,8 +32,6 @@ export async function GET() {
 
     return {
       ...client,
-      hourlyRate: client.hourlyRate ? Number(client.hourlyRate) : null,
-      fixedRate: client.fixedRate ? Number(client.fixedRate) : null,
       unpaidBalance,
       totalInvoices: client.invoices.length,
       lastInvoiceDate: lastInvoice?.createdAt ?? null,
@@ -64,14 +63,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const client = await db.client.create({
-    data: {
+  const [client] = await db
+    .insert(clients)
+    .values({
       ...parsed.data,
       userId: session.user.id,
       hourlyRate: parsed.data.hourlyRate ?? null,
       fixedRate: parsed.data.fixedRate ?? null,
-    },
-  });
+    })
+    .returning();
 
   return Response.json(client, { status: 201 });
 }
+

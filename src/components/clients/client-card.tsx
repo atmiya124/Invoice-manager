@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Client } from "@/generated/prisma/client";
+import type { Client } from "@/types";
 import { formatCurrency, getBillingCycleLabel, toDecimal } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

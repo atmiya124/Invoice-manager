@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invoices, emailLogs } from "@/lib/schema";
 import { sendEmailSchema } from "@/lib/validations";
 import { sendInvoiceEmail } from "@/lib/gmail";
 import { renderToBuffer } from "@react-pdf/renderer";
@@ -8,6 +9,7 @@ import { InvoicePDF } from "@/lib/pdf";
 import { interpolateEmailTemplate } from "@/lib/utils";
 import { NextRequest } from "next/server";
 import React from "react";
+import { and, eq } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -19,11 +21,11 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const invoice = await db.invoice.findFirst({
-    where: { id, userId: session.user.id },
-    include: {
+  const invoice = await db.query.invoices.findFirst({
+    where: and(eq(invoices.id, id), eq(invoices.userId, session.user.id)),
+    with: {
       client: {
-        select: {
+        columns: {
           name: true,
           companyName: true,
           email: true,
@@ -31,12 +33,13 @@ export async function POST(req: NextRequest, { params }: Params) {
         },
       },
       user: {
-        select: {
+        columns: {
           name: true,
           businessName: true,
           businessEmail: true,
           businessAddress: true,
           businessPhone: true,
+          hstNumber: true,
           paymentInstructions: true,
         },
       },
@@ -62,30 +65,18 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const invoiceData = {
-    ...invoice,
-    total: Number(invoice.total),
-    subtotal: Number(invoice.subtotal),
-    taxAmount: Number(invoice.taxAmount),
-    taxRate: Number(invoice.taxRate),
-    hoursWorked: invoice.hoursWorked ? Number(invoice.hoursWorked) : null,
-    hourlyRate: invoice.hourlyRate ? Number(invoice.hourlyRate) : null,
-    fixedAmount: invoice.fixedAmount ? Number(invoice.fixedAmount) : null,
-  };
-
   // Generate PDF
   let pdfBuffer: Buffer;
   try {
     pdfBuffer = await renderToBuffer(
-      React.createElement(InvoicePDF, { invoice: invoiceData, user: invoice.user }) as any
+      React.createElement(InvoicePDF, { invoice, user: invoice.user }) as any
     );
   } catch (err) {
     console.error("PDF generation failed:", err);
     return Response.json({ error: "PDF generation failed" }, { status: 500 });
   }
 
-  const senderName =
-    invoice.user.businessName || invoice.user.name || "Freelancer";
+  const senderName = invoice.user.businessName || invoice.user.name || "Freelancer";
 
   // Send via Gmail API
   try {
@@ -99,18 +90,14 @@ export async function POST(req: NextRequest, { params }: Params) {
       fromName: senderName,
     });
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Failed to send email";
+    const message = err instanceof Error ? err.message : "Failed to send email";
 
-    // Log failed attempt
-    await db.emailLog.create({
-      data: {
-        invoiceId: id,
-        recipientEmail: invoice.client.email,
-        subject: parsed.data.subject,
-        status: "FAILED",
-        errorMessage: message,
-      },
+    await db.insert(emailLogs).values({
+      invoiceId: id,
+      recipientEmail: invoice.client.email,
+      subject: parsed.data.subject,
+      status: "FAILED",
+      errorMessage: message,
     });
 
     return Response.json({ error: message }, { status: 500 });
@@ -118,24 +105,24 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Log success + update invoice
   await Promise.all([
-    db.emailLog.create({
-      data: {
-        invoiceId: id,
-        recipientEmail: invoice.client.email,
-        subject: parsed.data.subject,
-        status: "SENT",
-      },
+    db.insert(emailLogs).values({
+      invoiceId: id,
+      recipientEmail: invoice.client.email,
+      subject: parsed.data.subject,
+      status: "SENT",
     }),
-    db.invoice.update({
-      where: { id },
-      data: {
+    db
+      .update(invoices)
+      .set({
         status: "SENT",
-        sentAt: new Date(),
+        sentAt: new Date().toISOString(),
         emailSubject: parsed.data.subject,
         emailBody: parsed.data.body,
-      },
-    }),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(invoices.id, id)),
   ]);
 
   return Response.json({ success: true });
 }
+

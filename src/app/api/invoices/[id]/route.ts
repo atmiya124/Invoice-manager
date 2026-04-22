@@ -1,24 +1,22 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invoices, users } from "@/lib/schema";
 import { invoiceSchema } from "@/lib/validations";
 import { calculateInvoiceTotals, generateInvoiceNumber } from "@/lib/utils";
 import { NextRequest } from "next/server";
+import { and, eq, desc, count, like } from "drizzle-orm";
 
 type Params = { params: Promise<{ id: string }> };
 
-function serializeInvoice(invoice: Record<string, unknown>) {
-  return {
-    ...invoice,
-    total: Number(invoice.total),
-    subtotal: Number(invoice.subtotal),
-    taxAmount: Number(invoice.taxAmount),
-    taxRate: Number(invoice.taxRate),
-    hoursWorked: invoice.hoursWorked ? Number(invoice.hoursWorked) : null,
-    hourlyRate: invoice.hourlyRate ? Number(invoice.hourlyRate) : null,
-    fixedAmount: invoice.fixedAmount ? Number(invoice.fixedAmount) : null,
-  };
-}
+const CLIENT_COLS = {
+  id: true,
+  name: true,
+  companyName: true,
+  email: true,
+  billingAddress: true,
+  currency: true,
+} as const;
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
@@ -28,20 +26,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const invoice = await db.invoice.findFirst({
-    where: { id, userId: session.user.id },
-    include: {
-      client: {
-        select: {
-          id: true,
-          name: true,
-          companyName: true,
-          email: true,
-          billingAddress: true,
-          currency: true,
-        },
-      },
-      emailLogs: { orderBy: { sentAt: "desc" } },
+  const invoice = await db.query.invoices.findFirst({
+    where: and(eq(invoices.id, id), eq(invoices.userId, session.user.id)),
+    with: {
+      client: { columns: CLIENT_COLS },
+      emailLogs: { orderBy: (el, { desc: d }) => [d(el.sentAt)] },
     },
   });
 
@@ -49,7 +38,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  return Response.json(serializeInvoice(invoice as unknown as Record<string, unknown>));
+  return Response.json(invoice);
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
@@ -60,8 +49,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const existing = await db.invoice.findFirst({
-    where: { id, userId: session.user.id },
+  const existing = await db.query.invoices.findFirst({
+    where: and(eq(invoices.id, id), eq(invoices.userId, session.user.id)),
   });
   if (!existing) {
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -91,17 +80,13 @@ export async function PUT(req: NextRequest, { params }: Params) {
     taxRate: data.taxRate ?? 0,
   });
 
-  const invoice = await db.invoice.update({
-    where: { id },
-    data: {
+  await db
+    .update(invoices)
+    .set({
       clientId: data.clientId,
       billingType: data.billingType,
-      billingPeriodStart: data.billingPeriodStart
-        ? new Date(data.billingPeriodStart)
-        : null,
-      billingPeriodEnd: data.billingPeriodEnd
-        ? new Date(data.billingPeriodEnd)
-        : null,
+      billingPeriodStart: data.billingPeriodStart ?? null,
+      billingPeriodEnd: data.billingPeriodEnd ?? null,
       hoursWorked: data.hoursWorked ?? null,
       hourlyRate: data.hourlyRate ?? null,
       fixedAmount: data.fixedAmount ?? null,
@@ -110,27 +95,21 @@ export async function PUT(req: NextRequest, { params }: Params) {
       taxAmount: totals.taxAmount,
       total: totals.total,
       currency: data.currency,
-      dueDate: data.dueDate ? new Date(data.dueDate) : null,
+      dueDate: data.dueDate ?? null,
       taskSummary: data.taskSummary ?? null,
       notes: data.notes ?? null,
       paymentInstructions: data.paymentInstructions ?? null,
       privateNotes: data.privateNotes ?? null,
-    },
-    include: {
-      client: {
-        select: {
-          id: true,
-          name: true,
-          companyName: true,
-          email: true,
-          billingAddress: true,
-          currency: true,
-        },
-      },
-    },
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(invoices.id, id));
+
+  const invoice = await db.query.invoices.findFirst({
+    where: eq(invoices.id, id),
+    with: { client: { columns: CLIENT_COLS } },
   });
 
-  return Response.json(serializeInvoice(invoice as unknown as Record<string, unknown>));
+  return Response.json(invoice);
 }
 
 // POST on existing invoice = duplicate it
@@ -142,30 +121,34 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const existing = await db.invoice.findFirst({
-    where: { id, userId: session.user.id },
+  const existing = await db.query.invoices.findFirst({
+    where: and(eq(invoices.id, id), eq(invoices.userId, session.user.id)),
   });
   if (!existing) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  const year = new Date().getFullYear();
-  const existingCount = await db.invoice.count({
-    where: {
-      userId: session.user.id,
-      invoiceNumber: { startsWith: `${user?.invoicePrefix ?? "INV"}-${year}-` },
-    },
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, session.user.id),
+    columns: { invoicePrefix: true },
   });
+  const prefix = user?.invoicePrefix ?? "INV";
+  const year = new Date().getFullYear();
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(invoices)
+    .where(
+      and(
+        eq(invoices.userId, session.user.id),
+        like(invoices.invoiceNumber, `${prefix}-${year}-%`)
+      )
+    );
 
-  const invoiceNumber = generateInvoiceNumber(
-    user?.invoicePrefix ?? "INV",
-    year,
-    existingCount + 1
-  );
+  const invoiceNumber = generateInvoiceNumber(prefix, year, n + 1);
 
-  const duplicate = await db.invoice.create({
-    data: {
+  const [duplicate] = await db
+    .insert(invoices)
+    .values({
       userId: session.user.id,
       clientId: existing.clientId,
       invoiceNumber,
@@ -184,12 +167,10 @@ export async function POST(_req: NextRequest, { params }: Params) {
       taskSummary: existing.taskSummary,
       notes: existing.notes,
       paymentInstructions: existing.paymentInstructions,
-    },
-  });
+    })
+    .returning();
 
-  return Response.json(serializeInvoice(duplicate as unknown as Record<string, unknown>), {
-    status: 201,
-  });
+  return Response.json(duplicate, { status: 201 });
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
@@ -200,14 +181,14 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const existing = await db.invoice.findFirst({
-    where: { id, userId: session.user.id },
+  const existing = await db.query.invoices.findFirst({
+    where: and(eq(invoices.id, id), eq(invoices.userId, session.user.id)),
   });
   if (!existing) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  await db.invoice.delete({ where: { id } });
+  await db.delete(invoices).where(eq(invoices.id, id));
 
   return new Response(null, { status: 204 });
 }

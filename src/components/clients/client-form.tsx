@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Client } from "@/generated/prisma/client";
+import type { Client } from "@/types";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "CAD", "AUD", "CHF", "JPY", "INR"];
 const BILLING_CYCLES = [

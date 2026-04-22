@@ -2,12 +2,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { invoices as invoicesTable, users } from "@/lib/schema";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { EarningsChart } from "@/components/dashboard/earnings-chart";
 import Link from "next/link";
 import { subMonths, startOfMonth, endOfMonth, format } from "date-fns";
+import { eq, desc, gte } from "drizzle-orm";
 
 export default async function ReportsPage() {
   const session = await getServerSession(authOptions);
@@ -23,24 +25,29 @@ export default async function ReportsPage() {
     return { label: format(start, "MMM yy"), start, end };
   });
 
-  const invoices = await db.invoice.findMany({
-    where: { userId, createdAt: { gte: months[0].start } },
-    include: {
-      client: { select: { id: true, name: true, companyName: true } },
-    },
-  });
+  const [invoices, userRecord] = await Promise.all([
+    db.query.invoices.findMany({
+      where: eq(invoicesTable.userId, userId),
+      with: {
+        client: { columns: { id: true, name: true, companyName: true } },
+      },
+      orderBy: desc(invoicesTable.createdAt),
+    }),
+    db.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { defaultCurrency: true },
+    }),
+  ]);
+
+  const defaultCurrency = userRecord?.defaultCurrency ?? "USD";
 
   // Monthly income
   const monthlyData = months.map(({ label, start, end }) => {
     const slice = invoices.filter(
-      (i) => i.createdAt >= start && i.createdAt <= end
+      (i) => new Date(i.createdAt) >= start && new Date(i.createdAt) <= end
     );
-    const paid = slice
-      .filter((i) => i.status === "PAID")
-      .reduce((s, i) => s + Number(i.total), 0);
-    const pending = slice
-      .filter((i) => i.status === "SENT" || i.status === "OVERDUE")
-      .reduce((s, i) => s + Number(i.total), 0);
+    const paid = slice.filter((i) => i.status === "PAID").reduce((s, i) => s + i.total, 0);
+    const pending = slice.filter((i) => i.status === "SENT" || i.status === "OVERDUE").reduce((s, i) => s + i.total, 0);
     return { month: label, paid, pending };
   });
 
@@ -53,7 +60,7 @@ export default async function ReportsPage() {
       const prev = clientMap.get(i.clientId) ?? { name, total: 0, count: 0 };
       clientMap.set(i.clientId, {
         name,
-        total: prev.total + Number(i.total),
+        total: prev.total + i.total,
         count: prev.count + 1,
       });
     });
@@ -61,23 +68,11 @@ export default async function ReportsPage() {
     (a, b) => b.total - a.total
   );
 
-  const totalPaid = invoices
-    .filter((i) => i.status === "PAID")
-    .reduce((s, i) => s + Number(i.total), 0);
-  const totalPending = invoices
-    .filter((i) => i.status === "SENT" || i.status === "OVERDUE")
-    .reduce((s, i) => s + Number(i.total), 0);
+  const totalPaid = invoices.filter((i) => i.status === "PAID").reduce((s, i) => s + i.total, 0);
+  const totalPending = invoices.filter((i) => i.status === "SENT" || i.status === "OVERDUE").reduce((s, i) => s + i.total, 0);
   const unpaidInvoices = invoices
     .filter((i) => i.status === "SENT" || i.status === "OVERDUE")
-    .sort((a, b) => Number(b.total) - Number(a.total));
-
-  const defaultCurrency =
-    (
-      await db.user.findUnique({
-        where: { id: userId },
-        select: { defaultCurrency: true },
-      })
-    )?.defaultCurrency ?? "USD";
+    .sort((a, b) => b.total - a.total);
 
   return (
     <div className="space-y-6">

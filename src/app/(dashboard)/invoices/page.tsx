@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { InvoiceTable } from "@/components/invoices/invoice-table";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -10,8 +10,7 @@ import { Search, Plus } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
 
-export default function InvoicesPage() {
-  const router = useRouter();
+function InvoicesContent() {
   const searchParams = useSearchParams();
 
   const [invoices, setInvoices] = useState<InvoiceWithClient[]>([]);
@@ -110,5 +109,13 @@ export default function InvoicesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function InvoicesPage() {
+  return (
+    <Suspense fallback={<div className="py-12 text-center text-sm text-slate-400">Loading…</div>}>
+      <InvoicesContent />
+    </Suspense>
   );
 }

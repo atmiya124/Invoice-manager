@@ -14,14 +14,17 @@ export default async function NewInvoicePage({ searchParams }: Props) {
 
   const { clientId } = await searchParams;
 
+  const { clients: clientsTable, users } = await import("@/lib/schema");
+  const { and, eq, asc } = await import("drizzle-orm");
+
   const [clients, user] = await Promise.all([
-    db.client.findMany({
-      where: { userId: session.user.id, isArchived: false },
-      orderBy: { name: "asc" },
+    db.query.clients.findMany({
+      where: and(eq(clientsTable.userId, session.user.id), eq(clientsTable.isArchived, false)),
+      orderBy: asc(clientsTable.name),
     }),
-    db.user.findUnique({
-      where: { id: session.user.id },
-      select: {
+    db.query.users.findFirst({
+      where: eq(users.id, session.user.id),
+      columns: {
         name: true,
         businessName: true,
         businessEmail: true,
@@ -34,26 +37,20 @@ export default async function NewInvoicePage({ searchParams }: Props) {
     }),
   ]);
 
-  const serializedClients = clients.map((c) => ({
-    ...c,
-    hourlyRate: c.hourlyRate ? Number(c.hourlyRate) : null,
-    fixedRate: c.fixedRate ? Number(c.fixedRate) : null,
-  }));
-
   return (
     <div>
       <InvoiceForm
-        clients={serializedClients as any}
+        clients={clients as any}
         defaultClientId={clientId}
         userDefaults={{
-          defaultTaxRate: Number(user?.defaultTaxRate ?? 0),
+          defaultTaxRate: user?.defaultTaxRate ?? 0,
           defaultCurrency: user?.defaultCurrency ?? "USD",
-          paymentInstructions: user?.paymentInstructions,
-          name: user?.name,
-          businessName: user?.businessName,
-          businessEmail: user?.businessEmail,
-          businessAddress: user?.businessAddress,
-          hstNumber: user?.hstNumber,
+          paymentInstructions: user?.paymentInstructions ?? undefined,
+          name: user?.name ?? undefined,
+          businessName: user?.businessName ?? undefined,
+          businessEmail: user?.businessEmail ?? undefined,
+          businessAddress: user?.businessAddress ?? undefined,
+          hstNumber: user?.hstNumber ?? undefined,
         }}
       />
     </div>
