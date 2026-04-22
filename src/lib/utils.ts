@@ -9,9 +9,11 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatCurrency(
   amount: number,
-  currency: string = "USD"
+  currency: string = "CAD"
 ): string {
-  return new Intl.NumberFormat("en-US", {
+  // Use en-CA locale for CAD so it shows "$" instead of "CA$"
+  const locale = currency === "CAD" ? "en-CA" : "en-US";
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     minimumFractionDigits: 2,

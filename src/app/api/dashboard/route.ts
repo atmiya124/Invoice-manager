@@ -19,7 +19,7 @@ export async function GET() {
   // Auto-mark overdue
   await db
     .update(invoices)
-    .set({ status: "OVERDUE" })
+    .set({ status: "OVERDUE", updatedAt: now.toISOString() })
     .where(
       and(
         eq(invoices.userId, userId),

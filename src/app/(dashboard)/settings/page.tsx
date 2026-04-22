@@ -64,14 +64,16 @@ export default function SettingsPage() {
           businessPhone: data.businessPhone ?? "",
           hstNumber: data.hstNumber ?? "",
           invoicePrefix: data.invoicePrefix ?? "INV-",
-          defaultCurrency: data.defaultCurrency ?? "USD",
+          defaultCurrency: data.defaultCurrency ?? "CAD",
           defaultTaxRate: data.defaultTaxRate ?? 0,
           defaultPaymentTerms: data.defaultPaymentTerms ?? "Net 30",
           paymentInstructions: data.paymentInstructions ?? "",
           defaultEmailSubject:
-            data.defaultEmailSubject ??
-            "Invoice {{invoiceNumber}} from {{businessName}}",
-          defaultEmailBody: data.defaultEmailBody ?? "",
+            data.defaultEmailSubject ||
+            "Invoice {{invoiceNumber}} – {{period}}",
+          defaultEmailBody:
+            data.defaultEmailBody ||
+            "Hi {{clientName}},\n\nPlease find attached invoice {{invoiceNumber}} for the period {{period}}.\n\nAmount due: {{total}}\nDue date: {{dueDate}}\n\n{{paymentInstructions}}\n\nThank you for your business!\n{{senderName}}",
         });
         setGmailConnected(data.gmailConnected ?? false);
       })

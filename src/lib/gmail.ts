@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 import { db } from "@/lib/db";
-import { accounts } from "@/lib/schema";
+import { accounts, users } from "@/lib/schema";
 import { and, eq } from "drizzle-orm";
 
 /**
@@ -60,25 +60,38 @@ async function getGmailClient(userId: string) {
 export async function sendInvoiceEmail(params: {
   userId: string;
   to: string;
+  cc?: string[];
   subject: string;
   body: string;
   pdfBuffer: Buffer;
   pdfFilename: string;
   fromName?: string;
 }): Promise<void> {
-  const { userId, to, subject, body, pdfBuffer, pdfFilename, fromName } = params;
+  const { userId, to, cc, subject, body, pdfBuffer, pdfFilename, fromName } = params;
 
   const gmail = await getGmailClient(userId);
 
+  // Fetch the sender's email address for the From: header
+  const userRecord = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { email: true },
+  });
+  const senderEmail = userRecord?.email ?? "";
+
   const boundary = `boundary_${Date.now()}`;
   const pdfBase64 = pdfBuffer.toString("base64");
-  const fromDisplay = fromName ? `${fromName}` : "";
+  const fromHeader = fromName
+    ? `${fromName} <${senderEmail}>`
+    : senderEmail;
 
   // Build the raw MIME message
+  const ccHeader = cc && cc.length > 0 ? cc.join(", ") : null;
   const rawMessage = [
-    `From: ${fromDisplay}`,
+    `From: ${fromHeader}`,
     `To: ${to}`,
+    ...(ccHeader ? [`Cc: ${ccHeader}`] : []),
     `Subject: ${subject}`,
+    `Reply-To: ${senderEmail}`,
     `MIME-Version: 1.0`,
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     ``,

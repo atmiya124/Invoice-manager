@@ -101,11 +101,11 @@ export function ClientForm({ defaultValues, clientId }: ClientFormProps) {
           Contact Details
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField label="Contact Name" required error={errors.name?.message} htmlFor="name">
-            <Input id="name" {...register("name")} error={errors.name?.message} />
+          <FormField label="Company Name" required error={errors.companyName?.message} htmlFor="companyName">
+            <Input id="companyName" {...register("companyName")} error={errors.companyName?.message} />
           </FormField>
-          <FormField label="Company Name" error={errors.companyName?.message} htmlFor="companyName">
-            <Input id="companyName" {...register("companyName")} />
+          <FormField label="Contact Person" error={errors.name?.message} htmlFor="name">
+            <Input id="name" {...register("name")} placeholder="Optional" />
           </FormField>
           <FormField label="Email Address" error={errors.email?.message} htmlFor="email">
             <Input id="email" type="email" {...register("email")} error={errors.email?.message} />

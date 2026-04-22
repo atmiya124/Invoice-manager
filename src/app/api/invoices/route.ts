@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
   if (toMarkOverdue.length > 0) {
     await db
       .update(invoices)
-      .set({ status: "OVERDUE" })
+      .set({ status: "OVERDUE", updatedAt: new Date().toISOString() })
       .where(inArray(invoices.id, toMarkOverdue));
   }
 

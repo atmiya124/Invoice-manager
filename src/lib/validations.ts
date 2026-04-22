@@ -3,8 +3,8 @@ import { z } from "zod";
 // ─── Client ───────────────────────────────────────────────────────────────────
 
 export const clientSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  companyName: z.string().optional(),
+  name: z.string().optional().default(""),
+  companyName: z.string().min(1, "Company name is required"),
   email: z.string().email("Invalid email address").optional().or(z.literal("")),
   billingAddress: z.string().optional(),
   hourlyRate: z.coerce.number().min(0).optional().nullable(),
@@ -79,6 +79,11 @@ export const sendEmailSchema = z.object({
   invoiceId: z.string().min(1),
   subject: z.string().min(1, "Subject is required"),
   body: z.string().min(1, "Body is required"),
+  ccEmails: z
+    .array(z.string().email("Invalid email address"))
+    .max(10)
+    .optional()
+    .default([]),
 });
 
 export type SendEmailFormData = z.infer<typeof sendEmailSchema>;

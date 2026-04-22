@@ -83,6 +83,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     await sendInvoiceEmail({
       userId: session.user.id,
       to: invoice.client.email,
+      cc: parsed.data.ccEmails,
       subject: parsed.data.subject,
       body: parsed.data.body,
       pdfBuffer,

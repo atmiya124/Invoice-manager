@@ -68,7 +68,7 @@ export function InvoiceForm({
       hourlyRate: defaultValues?.hourlyRate ?? null,
       fixedAmount: defaultValues?.fixedAmount ?? null,
       taxRate: defaultValues?.taxRate ?? userDefaults?.defaultTaxRate ?? 0,
-      currency: defaultValues?.currency ?? userDefaults?.defaultCurrency ?? "USD",
+      currency: defaultValues?.currency ?? userDefaults?.defaultCurrency ?? "CAD",
       dueDate: defaultValues?.dueDate ?? "",
       taskSummary: defaultValues?.taskSummary ?? "",
       notes: defaultValues?.notes ?? "",
@@ -243,9 +243,6 @@ export function InvoiceForm({
                   {selectedClient.billingAddress && (
                     <p className="text-xs text-slate-400 mt-0.5">{selectedClient.billingAddress}</p>
                   )}
-                  {selectedClient.email && (
-                    <p className="text-xs text-slate-400 mt-0.5">{selectedClient.email}</p>
-                  )}
                 </>
               ) : (
                 <p className="text-sm text-slate-400 italic">Select a client →</p>
@@ -418,9 +415,9 @@ export function InvoiceForm({
                   {clientInitial}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-800 truncate">{selectedClient.name}</p>
-                  {selectedClient.email && (
-                    <p className="text-xs text-slate-500 truncate">{selectedClient.email}</p>
+                  <p className="text-sm font-medium text-slate-800 truncate">{selectedClient.companyName || selectedClient.name}</p>
+                  {selectedClient.companyName && selectedClient.name && (
+                    <p className="text-xs text-slate-500 truncate">{selectedClient.name}</p>
                   )}
                   {selectedClient.companyName && (
                     <p className="text-xs font-medium text-slate-600 mt-0.5">{selectedClient.companyName}</p>
@@ -437,7 +434,7 @@ export function InvoiceForm({
                 <option value="">— Choose a client —</option>
                 {activeClients.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.companyName ? `${c.companyName} (${c.name})` : c.name}
+                    {c.companyName || c.name}
                   </option>
                 ))}
               </Select>
@@ -576,10 +573,9 @@ export function InvoiceForm({
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Billed to</p>
               {selectedClient ? (
                 <>
-                  <p className="text-sm font-semibold text-slate-800">{selectedClient.name}</p>
-                  {selectedClient.companyName && <p className="text-xs text-slate-500 mt-0.5">{selectedClient.companyName}</p>}
+                  <p className="text-sm font-semibold text-slate-800">{selectedClient.companyName || selectedClient.name}</p>
+                  {selectedClient.companyName && selectedClient.name && <p className="text-xs text-slate-500 mt-0.5">{selectedClient.name}</p>}
                   {selectedClient.billingAddress && <p className="text-xs text-slate-400 mt-0.5">{selectedClient.billingAddress}</p>}
-                  {selectedClient.email && <p className="text-xs text-slate-400 mt-0.5">{selectedClient.email}</p>}
                 </>
               ) : (
                 <p className="text-sm text-slate-400 italic">No client selected</p>

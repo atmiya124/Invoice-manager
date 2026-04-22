@@ -1,12 +1,36 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
+import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { users } from "@/lib/schema";
+import { users, accounts, sessions, verificationTokens } from "@/lib/schema";
 import { eq } from "drizzle-orm";
 
 export const authOptions: NextAuthOptions = {
+  // Persist OAuth tokens (needed for Gmail API access)
+  adapter: DrizzleAdapter(db, {
+    usersTable: users as any,
+    accountsTable: accounts as any,
+    sessionsTable: sessions as any,
+    verificationTokensTable: verificationTokens as any,
+  }),
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      // Allow linking Google to an existing credentials account with the same email
+      allowDangerousEmailAccountLinking: true,
+      authorization: {
+        params: {
+          // Request Gmail send scope + offline access for refresh tokens
+          scope:
+            "openid email profile https://www.googleapis.com/auth/gmail.send",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    }),
     CredentialsProvider({
       name: "credentials",
       credentials: {

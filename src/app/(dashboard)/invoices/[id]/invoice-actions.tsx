@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { SendInvoiceModal } from "@/components/invoices/send-invoice-modal";
 import { InvoiceWithClient } from "@/types";
@@ -12,14 +13,19 @@ interface InvoiceActionsProps {
   invoice: InvoiceWithClient;
   defaultEmailSubject: string;
   defaultEmailBody: string;
+  senderName: string;
+  senderEmail: string;
 }
 
 export function InvoiceActions({
   invoice,
   defaultEmailSubject,
   defaultEmailBody,
+  senderName,
+  senderEmail,
 }: InvoiceActionsProps) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [sendOpen, setSendOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -39,7 +45,7 @@ export function InvoiceActions({
   }
 
   async function deleteInvoice() {
-    if (!confirm("Delete this invoice? This cannot be undone.")) return;
+    if (!await confirm("Delete this invoice? This cannot be undone.", { title: "Delete Invoice", confirmLabel: "Delete", danger: true })) return;
     setDeleteLoading(true);
     try {
       await fetch(`/api/invoices/${invoice.id}`, { method: "DELETE" });
@@ -107,8 +113,10 @@ export function InvoiceActions({
         open={sendOpen}
         onClose={() => setSendOpen(false)}
         invoice={invoice}
-          defaultSubject={defaultEmailSubject}
-          defaultBody={defaultEmailBody}
+        defaultSubject={defaultEmailSubject}
+        defaultBody={defaultEmailBody}
+        senderName={senderName}
+        senderEmail={senderEmail}
       />
 
     </>

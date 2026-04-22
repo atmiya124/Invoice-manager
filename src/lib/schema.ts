@@ -19,7 +19,7 @@ export const users = sqliteTable("User", {
   invoicePrefix: text("invoicePrefix").notNull().default("INV"),
   defaultPaymentTerms: text("defaultPaymentTerms").notNull().default("Net 30"),
   defaultTaxRate: real("defaultTaxRate").notNull().default(0),
-  defaultCurrency: text("defaultCurrency").notNull().default("USD"),
+  defaultCurrency: text("defaultCurrency").notNull().default("CAD"),
   paymentInstructions: text("paymentInstructions"),
   defaultEmailSubject: text("defaultEmailSubject")
     .notNull()
@@ -90,7 +90,7 @@ export const clients = sqliteTable("Client", {
     .notNull()
     .default("MONTHLY"),
   paymentTerms: text("paymentTerms").notNull().default("Net 30"),
-  currency: text("currency").notNull().default("USD"),
+  currency: text("currency").notNull().default("CAD"),
   defaultNotes: text("defaultNotes"),
   emailTemplate: text("emailTemplate"),
   paymentInstructions: text("paymentInstructions"),
@@ -129,7 +129,7 @@ export const invoices = sqliteTable("Invoice", {
   taxRate: real("taxRate").notNull().default(0),
   taxAmount: real("taxAmount").notNull(),
   total: real("total").notNull(),
-  currency: text("currency").notNull().default("USD"),
+  currency: text("currency").notNull().default("CAD"),
   dueDate: text("dueDate"),
   sentAt: text("sentAt"),
   paidAt: text("paidAt"),

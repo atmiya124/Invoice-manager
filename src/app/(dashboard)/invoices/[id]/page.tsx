@@ -10,6 +10,7 @@ import {
   formatDateRange,
 } from "@/lib/utils";
 import { InvoiceActions } from "./invoice-actions";
+import { EmailHistoryTable } from "@/components/invoices/email-history-table";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -19,7 +20,7 @@ export default async function InvoiceDetailPage({ params }: Params) {
 
   const { id } = await params;
 
-  const { invoices: invoicesTable, clients: clientsTable, users } = await import("@/lib/schema");
+  const { invoices: invoicesTable, clients: clientsTable, users, emailLogs: emailLogsTable } = await import("@/lib/schema");
   const { and, eq, desc } = await import("drizzle-orm");
 
   const [invoice, user] = await Promise.all([
@@ -36,13 +37,14 @@ export default async function InvoiceDetailPage({ params }: Params) {
             currency: true,
           },
         },
-        emailLogs: { orderBy: desc(invoicesTable.createdAt) },
+        emailLogs: { orderBy: desc(emailLogsTable.sentAt) },
       },
     }),
     db.query.users.findFirst({
       where: eq(users.id, session.user.id),
       columns: {
         name: true,
+        email: true,
         businessName: true,
         businessEmail: true,
         businessAddress: true,
@@ -63,12 +65,16 @@ export default async function InvoiceDetailPage({ params }: Params) {
     columns: { emailTemplate: true },
   });
 
-  const emailSubject = inv.emailSubject ?? user?.defaultEmailSubject ?? "Invoice {{invoiceNumber}}";
+  const emailSubject =
+    inv.emailSubject ||
+    user?.defaultEmailSubject ||
+    "Invoice {{invoiceNumber}} – {{period}}";
+
   const emailBody =
-    clientEmailTemplate?.emailTemplate ??
-    inv.emailBody ??
-    user?.defaultEmailBody ??
-    "";
+    clientEmailTemplate?.emailTemplate ||
+    inv.emailBody ||
+    user?.defaultEmailBody ||
+    "Hi {{clientName}},\n\nPlease find attached invoice {{invoiceNumber}} for the period {{period}}.\n\nAmount due: {{total}}\nDue date: {{dueDate}}\n\n{{paymentInstructions}}\n\nThank you for your business!\n{{senderName}}";
 
   const displayName = user?.name ?? "Freelancer";
   const displayBusiness = user?.businessName;
@@ -99,6 +105,8 @@ export default async function InvoiceDetailPage({ params }: Params) {
           invoice={inv}
           defaultEmailSubject={emailSubject}
           defaultEmailBody={emailBody}
+          senderName={user?.name ?? user?.businessName ?? ""}
+          senderEmail={user?.email ?? ""}
         />
       </div>
 
@@ -153,9 +161,6 @@ export default async function InvoiceDetailPage({ params }: Params) {
             {inv.client.billingAddress && (
               <p className="text-sm text-slate-400 mt-0.5 whitespace-pre-line">{inv.client.billingAddress}</p>
             )}
-            {inv.client.email && (
-              <p className="text-sm text-slate-400 mt-0.5">{inv.client.email}</p>
-            )}
           </div>
           {/* Payable To + Billing Period */}
           <div className="text-right space-y-4">
@@ -166,14 +171,6 @@ export default async function InvoiceDetailPage({ params }: Params) {
                 <p className="text-sm text-slate-400 mt-0.5">{displayPayableEmail}</p>
               )}
             </div>
-            {(inv.billingPeriodStart || inv.billingPeriodEnd) && (
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Billing Period</p>
-                <p className="text-sm text-slate-600">
-                  {formatDateRange(inv.billingPeriodStart, inv.billingPeriodEnd)}
-                </p>
-              </div>
-            )}
           </div>
         </div>
 
@@ -257,41 +254,7 @@ export default async function InvoiceDetailPage({ params }: Params) {
       )}
 
       {/* ── Email history ── */}
-      {inv.emailLogs.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <p className="text-sm font-semibold text-slate-800">Email History</p>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sent</th>
-                <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">To</th>
-                <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Subject</th>
-                <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {inv.emailLogs.map((log) => (
-                <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-3 text-xs text-slate-400">{formatDate(log.sentAt)}</td>
-                  <td className="px-6 py-3 text-slate-700">{log.recipientEmail}</td>
-                  <td className="px-6 py-3 text-slate-500 max-w-[240px] truncate">{log.subject}</td>
-                  <td className="px-6 py-3">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${
-                      log.status === "SENT"
-                        ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                        : "bg-red-50 text-red-700 ring-red-200"
-                    }`}>
-                      {log.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <EmailHistoryTable invoiceId={inv.id} logs={inv.emailLogs} />
     </div>
   );
 }

@@ -27,7 +27,7 @@ async function getDashboardData(userId: string) {
   // Auto-mark overdue
   await db
     .update(invoicesTable)
-    .set({ status: "OVERDUE" })
+    .set({ status: "OVERDUE", updatedAt: now.toISOString() })
     .where(and(eq(invoicesTable.userId, userId), eq(invoicesTable.status, "SENT"), lt(invoicesTable.dueDate, now.toISOString())));
 
   const [invoices, clients] = await Promise.all([

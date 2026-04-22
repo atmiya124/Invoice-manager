@@ -297,11 +297,6 @@ export function InvoicePDF({ invoice, user }: InvoicePDFProps) {
   const displayBusiness = user.businessName && user.name ? user.businessName : null;
   const displayPayableName = user.businessName || user.name || "";
 
-  const period =
-    invoice.billingPeriodStart && invoice.billingPeriodEnd
-      ? `${formatDate(invoice.billingPeriodStart)} – ${formatDate(invoice.billingPeriodEnd)}`
-      : null;
-
   const payInstructions = invoice.paymentInstructions || user.paymentInstructions || null;
 
   return (
@@ -368,12 +363,6 @@ export function InvoicePDF({ invoice, user }: InvoicePDFProps) {
             <Text style={styles.billName}>{displayPayableName}</Text>
             {user.businessEmail && (
               <Text style={styles.billDetail}>{user.businessEmail}</Text>
-            )}
-            {period && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={styles.sectionLabel}>Billing Period</Text>
-                <Text style={styles.periodValue}>{period}</Text>
-              </View>
             )}
           </View>
         </View>

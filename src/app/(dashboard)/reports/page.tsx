@@ -39,7 +39,7 @@ export default async function ReportsPage() {
     }),
   ]);
 
-  const defaultCurrency = userRecord?.defaultCurrency ?? "USD";
+  const defaultCurrency = userRecord?.defaultCurrency ?? "CAD";
 
   // Monthly income
   const monthlyData = months.map(({ label, start, end }) => {

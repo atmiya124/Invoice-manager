@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Building2, Mail, Plus, FileText, Edit, Archive } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 interface ClientCardProps {
   client: Client & {
@@ -20,9 +21,10 @@ interface ClientCardProps {
 export function ClientCard({ client, onArchive }: ClientCardProps) {
   const [archiving, setArchiving] = useState(false);
   const router = useRouter();
+  const confirm = useConfirm();
 
   async function handleArchive() {
-    if (!confirm("Archive this client? Their invoices will remain.")) return;
+    if (!await confirm("Archive this client? Their invoices will remain.", { title: "Archive Client", confirmLabel: "Archive" })) return;
     setArchiving(true);
     try {
       await fetch(`/api/clients/${client.id}`, {

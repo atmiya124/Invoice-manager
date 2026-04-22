@@ -44,7 +44,7 @@ export default async function NewInvoicePage({ searchParams }: Props) {
         defaultClientId={clientId}
         userDefaults={{
           defaultTaxRate: user?.defaultTaxRate ?? 0,
-          defaultCurrency: user?.defaultCurrency ?? "USD",
+          defaultCurrency: user?.defaultCurrency ?? "CAD",
           paymentInstructions: user?.paymentInstructions ?? undefined,
           name: user?.name ?? undefined,
           businessName: user?.businessName ?? undefined,
