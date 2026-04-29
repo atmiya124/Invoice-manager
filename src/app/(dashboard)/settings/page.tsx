@@ -70,7 +70,7 @@ export default function SettingsPage() {
           paymentInstructions: data.paymentInstructions ?? "",
           defaultEmailSubject:
             data.defaultEmailSubject ||
-            "Invoice {{invoiceNumber}} – {{period}}",
+            "Invoice {{invoiceNumber}} - {{period}}",
           defaultEmailBody:
             data.defaultEmailBody ||
             "Hi {{clientName}},\n\nPlease find attached invoice {{invoiceNumber}} for the period {{period}}.\n\nAmount due: {{total}}\nDue date: {{dueDate}}\n\n{{paymentInstructions}}\n\nThank you for your business!\n{{senderName}}",

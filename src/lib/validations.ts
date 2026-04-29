@@ -15,6 +15,7 @@ export const clientSchema = z.object({
   defaultNotes: z.string().optional(),
   emailTemplate: z.string().optional(),
   paymentInstructions: z.string().optional(),
+  invoiceStartNumber: z.coerce.number().min(1).optional(),
 });
 
 export type ClientFormData = z.infer<typeof clientSchema>;

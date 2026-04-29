@@ -68,7 +68,7 @@ export default async function InvoiceDetailPage({ params }: Params) {
   const emailSubject =
     inv.emailSubject ||
     user?.defaultEmailSubject ||
-    "Invoice {{invoiceNumber}} – {{period}}";
+    "Invoice {{invoiceNumber}} - {{period}}";
 
   const emailBody =
     clientEmailTemplate?.emailTemplate ||
@@ -105,7 +105,7 @@ export default async function InvoiceDetailPage({ params }: Params) {
           invoice={inv}
           defaultEmailSubject={emailSubject}
           defaultEmailBody={emailBody}
-          senderName={user?.name ?? user?.businessName ?? ""}
+          senderName={user?.name ?? ""}
           senderEmail={user?.email ?? ""}
         />
       </div>

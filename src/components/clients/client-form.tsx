@@ -53,6 +53,7 @@ export function ClientForm({ defaultValues, clientId }: ClientFormProps) {
       defaultNotes: defaultValues?.defaultNotes ?? "",
       emailTemplate: defaultValues?.emailTemplate ?? "",
       paymentInstructions: defaultValues?.paymentInstructions ?? "",
+      invoiceStartNumber: defaultValues?.invoiceStartNumber ?? 1,
     },
   });
 
@@ -122,6 +123,15 @@ export function ClientForm({ defaultValues, clientId }: ClientFormProps) {
           Billing Defaults
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="Invoice Start Number" error={errors.invoiceStartNumber?.message} htmlFor="invoiceStartNumber">
+            <Input
+              id="invoiceStartNumber"
+              type="number"
+              min="1"
+              placeholder="1"
+              {...register("invoiceStartNumber")}
+            />
+          </FormField>
           <FormField label="Hourly Rate" error={errors.hourlyRate?.message} htmlFor="hourlyRate">
             <Input
               id="hourlyRate"

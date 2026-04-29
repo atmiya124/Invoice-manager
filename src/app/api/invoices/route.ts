@@ -107,23 +107,27 @@ export async function POST(req: NextRequest) {
   }
 
   // Generate invoice number
+
   const user = await db.query.users.findFirst({
     where: eq(users.id, session.user.id),
     columns: { invoicePrefix: true },
   });
   const prefix = user?.invoicePrefix ?? "INV";
   const year = new Date().getFullYear();
+  // Count invoices for this user, client, and year
   const [{ n }] = await db
     .select({ n: count() })
     .from(invoices)
     .where(
       and(
         eq(invoices.userId, session.user.id),
+        eq(invoices.clientId, data.clientId),
         like(invoices.invoiceNumber, `${prefix}-${year}-%`)
       )
     );
-
-  const invoiceNumber = generateInvoiceNumber(prefix, year, n + 1);
+  // Use the client's invoiceStartNumber as the base
+  const startNumber = client.invoiceStartNumber ?? 1;
+  const invoiceNumber = generateInvoiceNumber(prefix, year, startNumber + n);
 
   // Calculate totals
   const totals = calculateInvoiceTotals({

@@ -95,6 +95,7 @@ export const clients = sqliteTable("Client", {
   emailTemplate: text("emailTemplate"),
   paymentInstructions: text("paymentInstructions"),
   isArchived: integer("isArchived", { mode: "boolean" }).notNull().default(false),
+  invoiceStartNumber: integer("invoiceStartNumber").notNull().default(1),
   createdAt: text("createdAt")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

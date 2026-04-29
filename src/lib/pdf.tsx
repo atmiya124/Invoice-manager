@@ -352,7 +352,7 @@ export function InvoicePDF({ invoice, user }: InvoicePDFProps) {
               {invoice.client.companyName || invoice.client.name}
             </Text>
             {invoice.client.billingAddress && (
-              <Text style={[styles.billDetail, { color: "#6366f1" }]}>
+              <Text style={styles.billDetail}>
                 {invoice.client.billingAddress}
               </Text>
             )}
