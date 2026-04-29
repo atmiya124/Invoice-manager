@@ -51,13 +51,15 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 3,
   },
   metaLabel: {
     fontSize: 9,
     color: "#6b7280",
     width: 80,
-    textAlign: "right",
+    textAlign: "left",
     marginRight: 8,
   },
   metaValue: {

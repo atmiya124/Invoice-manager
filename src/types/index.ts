@@ -18,6 +18,7 @@ export interface Client {
   emailTemplate: string | null;
   paymentInstructions: string | null;
   isArchived: boolean;
+  invoiceStartNumber?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,6 +39,7 @@ export interface ClientWithStats {
   emailTemplate: string | null;
   paymentInstructions: string | null;
   isArchived: boolean;
+  invoiceStartNumber?: number;
   createdAt: string;
   updatedAt: string;
   // computed
